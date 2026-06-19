@@ -1,0 +1,31 @@
+# 自测目录
+selfTest/
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Maven
+target/
+dependency-reduced-pom.xml
+
+# 数据库文件
+*.db
+*.mv.db
+*.lock.db
+
+# 日志/临时文件
+*.log
+*.tmp
+cp.txt
+except.txt
+test_report_*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 构建产物
+start.bat

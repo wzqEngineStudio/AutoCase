@@ -6,6 +6,7 @@ import com.autocase.entity.ReportData;
 import com.autocase.entity.TestCase;
 import com.autocase.logic.CaseLogic;
 import com.autocase.util.DialogUtil;
+import com.autocase.util.HashCache;
 import com.autocase.util.LayoutPersistence;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
@@ -310,6 +311,11 @@ public class MainWindow {
         if (!dir.exists() || !dir.isDirectory()) {
             DialogUtil.showError(primaryStage, "目录不存在: " + directory);
             return;
+        }
+
+        // 如果目录发生变化，使旧缓存失效
+        if (rootDirectory != null && !rootDirectory.equals(directory)) {
+            HashCache.getInstance().invalidateDirectory(rootDirectory);
         }
 
         rootDirectory = directory;

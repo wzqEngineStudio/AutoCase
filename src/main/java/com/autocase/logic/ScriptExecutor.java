@@ -7,6 +7,7 @@ import com.autocase.entity.ReportData;
 import com.autocase.entity.TestCase;
 import com.autocase.entity.TestScript;
 import com.autocase.util.Constants;
+import com.autocase.util.HashCache;
 
 import java.io.*;
 import java.nio.file.*;
@@ -127,9 +128,24 @@ public class ScriptExecutor {
 
     /**
      * 扫描脚本
+     * 使用增量缓存：根目录不变时，仅文件变动才触发重扫
      */
+    @SuppressWarnings("unchecked")
     public List<TestScript> scanScripts(String directoryPath) {
-        return scriptDao.scanScripts(directoryPath);
+        HashCache cache = HashCache.getInstance();
+
+        // 检查缓存状态（基于脏标记，零遍历设计）
+        HashCache.CacheResult<Object> result =
+                cache.getOrCheck(directoryPath, HashCache.CacheType.SCRIPTS);
+
+        if (result.isFresh()) {
+            return (List<TestScript>) result.getData();
+        }
+
+        // 缓存过期 → 执行扫描
+        List<TestScript> scripts = scriptDao.scanScripts(directoryPath);
+        cache.put(directoryPath, HashCache.CacheType.SCRIPTS, new ArrayList<>(scripts));
+        return scripts;
     }
 
     /**
@@ -470,7 +486,13 @@ public class ScriptExecutor {
             pb.directory(new File(rootDirectory));
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+            // 轮询等待，避免依赖 TimeUnit（与项目 Java 版本兼容性问题）
+            long elapsed = 0;
+            while (elapsed < 30000 && p.isAlive()) {
+                Thread.sleep(100);
+                elapsed += 100;
+            }
+            if (p.isAlive()) p.destroyForcibly();
 
             Path cpFile = Paths.get(rootDirectory, "target", "cp.txt");
             if (Files.exists(cpFile)) {

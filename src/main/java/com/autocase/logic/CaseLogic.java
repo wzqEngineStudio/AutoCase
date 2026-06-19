@@ -5,6 +5,7 @@ import com.autocase.dao.ConfigDao;
 import com.autocase.entity.CaseStatus;
 import com.autocase.entity.GlobalConfig;
 import com.autocase.entity.TestCase;
+import com.autocase.util.HashCache;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,10 +27,29 @@ public class CaseLogic {
 
     /**
      * 加载指定目录下的所有用例
+     * 使用增量缓存：根目录不变时，仅文件变动才触发重扫
+     *
      * @param directoryPath 目录路径
      */
+    @SuppressWarnings("unchecked")
     public void loadCases(String directoryPath) {
+        HashCache cache = HashCache.getInstance();
+
+        // 检查缓存状态（基于脏标记，零遍历设计）
+        HashCache.CacheResult<Object> result =
+                cache.getOrCheck(directoryPath, HashCache.CacheType.CASES);
+
+        if (result.isFresh()) {
+            // 缓存完全命中 → 零扫描，直接使用
+            allCases = (List<TestCase>) result.getData();
+            return;
+        }
+
+        // 缓存过期 → 执行全量扫描
         allCases = caseDao.scanCases(directoryPath);
+
+        // 写入缓存（异步持久化，更新两级哈希）
+        cache.put(directoryPath, HashCache.CacheType.CASES, new ArrayList<>(allCases));
     }
 
     /**

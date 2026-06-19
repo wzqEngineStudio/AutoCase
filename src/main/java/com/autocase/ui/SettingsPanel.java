@@ -4,6 +4,8 @@ import com.autocase.dao.ConfigDao;
 import com.autocase.entity.GlobalConfig;
 import com.autocase.entity.GlobalConfig.HotkeyConfig;
 import com.autocase.entity.GlobalConfig.ScriptLanguageConfig;
+import com.autocase.util.DialogUtil;
+import com.autocase.util.HashCache;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -67,10 +69,13 @@ public class SettingsPanel extends BorderPane {
         // 开发者信息
         VBox aboutSection = createAboutSection();
 
+        // 缓存管理
+        VBox cacheSection = createCacheSection();
+
         // 保存按钮
         HBox buttonBox = createButtonBox();
 
-        content.getChildren().addAll(caseFormatSection, scriptLangSection, hotkeySection, aboutSection, buttonBox);
+        content.getChildren().addAll(caseFormatSection, scriptLangSection, hotkeySection, cacheSection, aboutSection, buttonBox);
 
         ScrollPane scrollPane = new ScrollPane(content);
         scrollPane.setFitToWidth(true);
@@ -217,6 +222,52 @@ public class SettingsPanel extends BorderPane {
     }
 
     /**
+     * 创建缓存管理板块
+     */
+    private VBox createCacheSection() {
+        VBox section = new VBox(10);
+        section.setPadding(new Insets(15));
+        section.setStyle("-fx-background-color: white; -fx-background-radius: 8; "
+                + "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 5, 0, 0, 2);");
+
+        Label title = new Label("⚡ 哈希缓存");
+        title.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #333;");
+
+        Label desc = new Label("类似 Redis 的本地文件缓存，对数据源目录计算 MD5 哈希指纹。"
+                + "当目录未变化时，启动时直接从缓存恢复用例和脚本列表，跳过全量文件扫描。");
+        desc.setStyle("-fx-text-fill: #666; -fx-font-size: 12px; -fx-wrap-text: true;");
+        desc.setMaxWidth(Double.MAX_VALUE);
+
+        // 缓存状态显示
+        TextArea cacheStatusArea = new TextArea();
+        cacheStatusArea.setEditable(false);
+        cacheStatusArea.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-size: 12px; "
+                + "-fx-control-inner-background: #f8f8f8;");
+        cacheStatusArea.setPrefRowCount(4);
+        cacheStatusArea.setText(HashCache.getInstance().getStats());
+
+        // 操作按钮
+        HBox btnBox = new HBox(10);
+        btnBox.setAlignment(Pos.CENTER_LEFT);
+
+        Button refreshBtn = new Button("刷新状态");
+        refreshBtn.setOnAction(e -> cacheStatusArea.setText(HashCache.getInstance().getStats()));
+
+        Button clearBtn = new Button("清除全部缓存");
+        clearBtn.setStyle("-fx-background-color: #ff5722; -fx-text-fill: white;");
+        clearBtn.setOnAction(e -> {
+            HashCache.getInstance().clearAll();
+            cacheStatusArea.setText(HashCache.getInstance().getStats());
+            DialogUtil.showInfo("已清除全部缓存，下次加载将重新扫描");
+        });
+
+        btnBox.getChildren().addAll(refreshBtn, clearBtn);
+
+        section.getChildren().addAll(title, desc, cacheStatusArea, btnBox);
+        return section;
+    }
+
+    /**
      * 创建开发者信息板块
      */
     private VBox createAboutSection() {
@@ -244,7 +295,7 @@ public class SettingsPanel extends BorderPane {
         Label projectLabel = new Label("项目：AutoCase");
         projectLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.9); -fx-font-size: 13px;");
 
-        Label versionLabel = new Label("版本：v1.0.0");
+        Label versionLabel = new Label("版本：v1.1.0");
         versionLabel.setStyle("-fx-text-fill: rgba(255,255,255,0.85); -fx-font-size: 12px;");
 
         Separator sep2 = new Separator();

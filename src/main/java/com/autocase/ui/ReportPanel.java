@@ -297,24 +297,32 @@ public class ReportPanel extends BorderPane {
 
         // 操作列：为失败用例添加"创建手工任务"和"添加到任务"按钮
         TableColumn<ExecutionResult, Void> actionCol = new TableColumn<>("操作");
-        actionCol.setPrefWidth(160);
+        actionCol.setPrefWidth(70);
         actionCol.setStyle("-fx-alignment: CENTER;");
         actionCol.setCellFactory(param -> new TableCell<ExecutionResult, Void>() {
-            private final Button createTaskBtn = new Button("创建手工任务");
-            private final Button addToTaskBtn = new Button("添加到任务");
-            private final HBox buttonBox = new HBox(4, createTaskBtn, addToTaskBtn);
+            private final Button actionBtn = new Button("...");
+            private final ContextMenu contextMenu = new ContextMenu();
 
             {
-                createTaskBtn.setStyle("-fx-font-size: 11px;");
-                createTaskBtn.setOnAction(e -> {
+                MenuItem createTaskItem = new MenuItem("创建手工任务");
+                MenuItem addToTaskItem = new MenuItem("添加到任务");
+
+                contextMenu.getItems().addAll(createTaskItem, addToTaskItem);
+
+                createTaskItem.setOnAction(e -> {
                     ExecutionResult result = getTableView().getItems().get(getIndex());
                     createManualTaskFromFailed(result);
                 });
 
-                addToTaskBtn.setStyle("-fx-font-size: 11px;");
-                addToTaskBtn.setOnAction(e -> {
+                addToTaskItem.setOnAction(e -> {
                     ExecutionResult result = getTableView().getItems().get(getIndex());
                     addFailedCaseToExistingTask(result);
+                });
+
+                actionBtn.setOnMouseClicked(e -> {
+                    if (e.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
+                        contextMenu.show(actionBtn, e.getScreenX(), e.getScreenY());
+                    }
                 });
             }
 
@@ -328,9 +336,8 @@ public class ReportPanel extends BorderPane {
                     // 仅对失败/阻塞/超时的用例显示按钮
                     String status = result.getStatus();
                     if ("FAILED".equals(status) || "BLOCKED".equals(status) || "TIMEOUT".equals(status)) {
-                        createTaskBtn.setDisable(false);
-                        addToTaskBtn.setDisable(false);
-                        setGraphic(buttonBox);
+                        actionBtn.setDisable(false);
+                        setGraphic(actionBtn);
                     } else {
                         setGraphic(null);
                     }

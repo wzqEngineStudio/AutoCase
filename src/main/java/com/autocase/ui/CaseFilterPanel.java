@@ -5,16 +5,19 @@ import com.autocase.entity.ManualTestBatch;
 import com.autocase.entity.Severity;
 import com.autocase.entity.TestCase;
 import com.autocase.logic.CaseLogic;
+import com.autocase.logic.CaseTemplateGenerator;
 import com.autocase.util.DialogUtil;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.BorderPane;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -123,17 +126,19 @@ public class CaseFilterPanel extends VBox {
 
         Button filterButton = new Button("筛选");
         Button resetButton = new Button("重置");
+        Button templateBtn = new Button("查看用例模板");
 
         // 筛选值容器（动态切换）
         HBox valueBox = new HBox(5);
         valueBox.getChildren().addAll(keywordField, idStartField, idEndField, statusCombo, severityCombo, priorityCombo);
         HBox.setHgrow(valueBox, Priority.ALWAYS);
 
-        filterBox.getChildren().addAll(typeLabel, filterTypeCombo, valueBox, filterButton, resetButton);
+        filterBox.getChildren().addAll(typeLabel, filterTypeCombo, valueBox, filterButton, resetButton, templateBtn);
 
         // 按钮事件
         filterButton.setOnAction(e -> applyFilter());
         resetButton.setOnAction(e -> resetFilter());
+        templateBtn.setOnAction(e -> showTemplateDialog());
 
         getChildren().addAll(filterBox, caseTable);
     }
@@ -412,6 +417,89 @@ public class CaseFilterPanel extends VBox {
 
     public void setOnAddToTask(Consumer<TestCase> handler) {
         this.onAddToTask = handler;
+    }
+
+    /**
+     * 显示用例模板查看对话框（只读 + 复制）
+     * 支持 JSON / XML / YAML / Excel(CSV) 格式
+     */
+    private void showTemplateDialog() {
+        javafx.stage.Stage dialog = new javafx.stage.Stage();
+        dialog.initModality(javafx.stage.Modality.APPLICATION_MODAL);
+        dialog.setTitle("用例模板规范");
+        dialog.setWidth(720);
+        dialog.setHeight(580);
+
+        // 格式选择
+        HBox formatBox = new HBox(10);
+        formatBox.setPadding(new Insets(10));
+        formatBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        Label formatLabel = new Label("输出格式:");
+        ComboBox<String> formatCombo = new ComboBox<>();
+        for (java.util.Map.Entry<String, String> entry : CaseTemplateGenerator.SUPPORTED_FORMATS.entrySet()) {
+            formatCombo.getItems().add(entry.getKey());
+        }
+        if (!formatCombo.getItems().isEmpty()) {
+            formatCombo.setValue(formatCombo.getItems().get(0)); // 默认JSON
+        }
+
+        // 模板预览区域（只读，用户不可修改）
+        TextArea templateArea = new TextArea();
+        templateArea.setEditable(false);
+        templateArea.setStyle("-fx-font-family: 'Consolas', 'Courier New', monospace; -fx-font-size: 13px; "
+                + "-fx-control-inner-background: #f8f8f8;");
+        templateArea.setWrapText(true);
+
+        // 操作按钮
+        HBox btnBox = new HBox(10);
+        btnBox.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        btnBox.setPadding(new Insets(10));
+        Button copyBtn = new Button("复制模板");
+        copyBtn.setStyle("-fx-background-color: #2196F3; -fx-text-fill: white; -fx-font-weight: bold;");
+        Label hintLabel = new Label("(只读展示，不可编辑)");
+        hintLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 11px;");
+        Button closeBtn = new Button("关闭");
+        btnBox.getChildren().addAll(copyBtn, hintLabel, closeBtn);
+
+        // 布局
+        BorderPane root = new BorderPane();
+        root.setTop(formatBox);
+        root.setCenter(templateArea);
+        root.setBottom(btnBox);
+
+        // 切换格式时重新生成
+        Runnable generate = () -> {
+            String fmt = formatCombo.getValue();
+            if (fmt == null) return;
+            try {
+                String text = CaseTemplateGenerator.generate(fmt);
+                templateArea.setText(text);
+            } catch (Exception ex) {
+                templateArea.setText("// 生成失败: " + ex.getMessage());
+            }
+        };
+
+        formatCombo.setOnAction(e -> generate.run());
+
+        // 复制功能
+        copyBtn.setOnAction(e -> {
+            String text = templateArea.getText();
+            if (text != null && !text.isEmpty()) {
+                javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+                content.putString(text);
+                javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+                DialogUtil.showInfo("已复制到剪贴板");
+            }
+        });
+
+        closeBtn.setOnAction(e -> dialog.close());
+
+        // 首次自动生成
+        generate.run();
+
+        Scene scene = new Scene(root);
+        dialog.setScene(scene);
+        dialog.show();
     }
 
     private Integer parseInt(String text) {

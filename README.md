@@ -104,7 +104,7 @@ cd AutoCase
 mvn clean package
 
 # 运行
-java -jar target/autocase-1.0.0.jar
+java -jar target/autocase-1.1.0.jar
 ```
 
 ### 使用流程

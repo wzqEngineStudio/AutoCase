@@ -326,7 +326,7 @@ public class ResourceExplorer extends TreeView<String> {
     }
 
     /**
-     * 刷新目录树
+     * 刷新目录树（保持已展开的目录状态）
      */
     private void refreshTree() {
         if (rootDirectory == null || rootDirectory.isEmpty()) {
@@ -340,9 +340,51 @@ public class ResourceExplorer extends TreeView<String> {
             return;
         }
 
+        // 保存当前已展开的目录路径
+        java.util.Set<String> expandedPaths = new java.util.HashSet<>();
+        TreeItem<String> oldRoot = getRoot();
+        if (oldRoot != null) {
+            collectExpandedPaths(oldRoot, expandedPaths);
+        }
+
         TreeItem<String> rootItem = buildTree(rootFile);
         setRoot(rootItem);
         rootItem.setExpanded(true);
+
+        // 恢复之前展开的目录
+        if (!expandedPaths.isEmpty()) {
+            restoreExpandedPaths(rootItem, expandedPaths);
+        }
+    }
+
+    /**
+     * 递归收集所有已展开的目录路径
+     */
+    private void collectExpandedPaths(TreeItem<String> item, java.util.Set<String> paths) {
+        if (item == null) return;
+        if (item.isExpanded() && new File(item.getValue()).isDirectory()) {
+            paths.add(item.getValue());
+        }
+        for (TreeItem<String> child : item.getChildren()) {
+            collectExpandedPaths(child, paths);
+        }
+    }
+
+    /**
+     * 递归恢复已展开的目录
+     */
+    private void restoreExpandedPaths(TreeItem<String> item, java.util.Set<String> paths) {
+        if (item == null) return;
+        if (paths.contains(item.getValue())) {
+            item.setExpanded(true);
+            // 如果子节点为空（懒加载），先加载
+            if (item.getChildren().isEmpty() && new File(item.getValue()).isDirectory()) {
+                loadChildren(item, new File(item.getValue()));
+            }
+        }
+        for (TreeItem<String> child : item.getChildren()) {
+            restoreExpandedPaths(child, paths);
+        }
     }
 
     /**

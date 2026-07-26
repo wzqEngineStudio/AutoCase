@@ -14,6 +14,7 @@ import javafx.scene.text.Text;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -35,15 +36,20 @@ public class ScriptExplorer extends TreeView<String> {
 
     public ScriptExplorer() {
         setPrefWidth(250);
+        // 启用多选模式：Ctrl+Click 多选，Shift+Click 范围选择
+        getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         setCellFactory(tv -> new ScriptTreeCell());
         setupContextMenu();
-        // 双击打开文本查看器
+        // 双击打开文本查看器（仅单选时生效）
         setOnMouseClicked(e -> {
             if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2) {
-                TreeItem<String> selected = getSelectionModel().getSelectedItem();
-                if (selected != null && new File(selected.getValue()).isFile()) {
-                    TextViewerDialog viewer = new TextViewerDialog(selected.getValue());
-                    viewer.show();
+                List<TreeItem<String>> selectedItems = getSelectionModel().getSelectedItems();
+                if (selectedItems.size() == 1) {
+                    String path = selectedItems.get(0).getValue();
+                    if (new File(path).isFile()) {
+                        TextViewerDialog viewer = new TextViewerDialog(path);
+                        viewer.show();
+                    }
                 }
             }
         });
@@ -55,6 +61,7 @@ public class ScriptExplorer extends TreeView<String> {
     private void setupContextMenu() {
         ContextMenu contextMenu = new ContextMenu();
 
+        MenuItem createScriptItem = new MenuItem("创建自动化脚本");
         MenuItem createDirItem = new MenuItem("新建目录");
         MenuItem viewTextItem = new MenuItem("查看文本");
         MenuItem renameItem = new MenuItem("重命名");
@@ -67,7 +74,7 @@ public class ScriptExplorer extends TreeView<String> {
         MenuItem refreshItem = new MenuItem("刷新");
 
         contextMenu.getItems().addAll(
-                createDirItem,
+                createScriptItem, createDirItem,
                 new SeparatorMenuItem(),
                 viewTextItem,
                 new SeparatorMenuItem(),
@@ -84,6 +91,7 @@ public class ScriptExplorer extends TreeView<String> {
             boolean isFile = hasSelection && new File(selected.getValue()).isFile();
             boolean hasClipboard = clipboardPath != null;
 
+            createScriptItem.setDisable(!isDirectory);
             createDirItem.setDisable(!isDirectory);
             viewTextItem.setDisable(!isFile);
             renameItem.setDisable(!hasSelection);
@@ -109,6 +117,16 @@ public class ScriptExplorer extends TreeView<String> {
                         }
                     }
                 });
+            }
+        });
+
+        // 创建自动化脚本
+        createScriptItem.setOnAction(e -> {
+            TreeItem<String> selected = getSelectionModel().getSelectedItem();
+            if (selected != null && new File(selected.getValue()).isDirectory()) {
+                if (onCreateScript != null) {
+                    onCreateScript.accept(selected.getValue());
+                }
             }
         });
 
@@ -192,14 +210,17 @@ public class ScriptExplorer extends TreeView<String> {
             }
         });
 
-        // 删除
+        // 删除（支持批量删除）
         deleteItem.setOnAction(e -> {
-            TreeItem<String> selected = getSelectionModel().getSelectedItem();
-            if (selected != null) {
-                File file = new File(selected.getValue());
+            List<TreeItem<String>> selectedItems = getSelectionModel().getSelectedItems();
+            if (selectedItems.isEmpty()) {
+                return;
+            }
+            if (selectedItems.size() == 1) {
+                // 单个删除
+                File file = new File(selectedItems.get(0).getValue());
                 String itemName = file.getName();
                 String content = file.isDirectory() ? "目录及其所有内容将被删除" : "文件将被删除";
-
                 if (DialogUtil.showConfirm("确认删除", "确定要删除 " + itemName + " ?", content)) {
                     boolean success = file.isDirectory()
                             ? FileUtil.deleteDirectory(file)
@@ -208,6 +229,33 @@ public class ScriptExplorer extends TreeView<String> {
                         refreshTree();
                     } else {
                         DialogUtil.showError("删除失败");
+                    }
+                }
+            } else {
+                // 批量删除
+                String names = selectedItems.stream()
+                        .map(item -> new File(item.getValue()).getName())
+                        .reduce((a, b) -> a + ", " + b)
+                        .orElse("");
+                if (DialogUtil.showConfirm("批量删除确认",
+                        "确定要删除选中的 " + selectedItems.size() + " 项？",
+                        "以下项目将被删除：\n" + names)) {
+                    int successCount = 0;
+                    int failCount = 0;
+                    for (TreeItem<String> item : selectedItems) {
+                        File file = new File(item.getValue());
+                        boolean ok = file.isDirectory()
+                                ? FileUtil.deleteDirectory(file)
+                                : file.delete();
+                        if (ok) successCount++;
+                        else failCount++;
+                    }
+                    if (failCount == 0) {
+                        refreshTree();
+                    } else {
+                        DialogUtil.showWarning("部分删除失败",
+                                "成功: " + successCount + ", 失败: " + failCount);
+                        refreshTree();
                     }
                 }
             }
@@ -282,7 +330,7 @@ public class ScriptExplorer extends TreeView<String> {
     }
 
     /**
-     * 刷新目录树
+     * 刷新目录树（保持已展开的目录状态）
      */
     private void refreshTree() {
         if (rootDirectory == null || rootDirectory.isEmpty()) {
@@ -296,9 +344,51 @@ public class ScriptExplorer extends TreeView<String> {
             return;
         }
 
+        // 保存当前已展开的目录路径
+        java.util.Set<String> expandedPaths = new java.util.HashSet<>();
+        TreeItem<String> oldRoot = getRoot();
+        if (oldRoot != null) {
+            collectExpandedPaths(oldRoot, expandedPaths);
+        }
+
         TreeItem<String> rootItem = buildTree(rootFile);
         setRoot(rootItem);
         rootItem.setExpanded(true);
+
+        // 恢复之前展开的目录
+        if (!expandedPaths.isEmpty()) {
+            restoreExpandedPaths(rootItem, expandedPaths);
+        }
+    }
+
+    /**
+     * 递归收集所有已展开的目录路径
+     */
+    private void collectExpandedPaths(TreeItem<String> item, java.util.Set<String> paths) {
+        if (item == null) return;
+        if (item.isExpanded() && new File(item.getValue()).isDirectory()) {
+            paths.add(item.getValue());
+        }
+        for (TreeItem<String> child : item.getChildren()) {
+            collectExpandedPaths(child, paths);
+        }
+    }
+
+    /**
+     * 递归恢复已展开的目录
+     */
+    private void restoreExpandedPaths(TreeItem<String> item, java.util.Set<String> paths) {
+        if (item == null) return;
+        if (paths.contains(item.getValue())) {
+            item.setExpanded(true);
+            // 如果子节点为空（懒加载），先加载
+            if (item.getChildren().isEmpty() && new File(item.getValue()).isDirectory()) {
+                loadChildren(item, new File(item.getValue()));
+            }
+        }
+        for (TreeItem<String> child : item.getChildren()) {
+            restoreExpandedPaths(child, paths);
+        }
     }
 
     /**
@@ -421,6 +511,15 @@ public class ScriptExplorer extends TreeView<String> {
             }
             watchService = null;
         }
+    }
+
+    /**
+     * 创建自动化脚本回调
+     */
+    private java.util.function.Consumer<String> onCreateScript;
+
+    public void setOnCreateScript(java.util.function.Consumer<String> handler) {
+        this.onCreateScript = handler;
     }
 
     /**

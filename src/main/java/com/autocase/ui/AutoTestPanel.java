@@ -68,6 +68,9 @@ public class AutoTestPanel extends BorderPane {
     // 执行历史 DAO
     private final ExecutionHistoryDao executionHistoryDao;
 
+    // 当前打开的脚本模板对话框（用于生成后自动关闭）
+    private Stage templateDialog;
+
     public AutoTestPanel() {
         this.scriptExecutor = new ScriptExecutor();
         this.caseDao = new CaseDao();
@@ -157,6 +160,11 @@ public class AutoTestPanel extends BorderPane {
             if (filePath != null && new File(filePath).isFile()) {
                 selectScriptByPath(filePath);
             }
+        });
+        // 绑定右键菜单「创建自动化脚本」回调
+        scriptExplorer.setOnCreateScript(dirPath -> {
+            showTemplateDialog();
+            // 对话框打开后，用户可以选择用例并生成到该目录
         });
 
         scriptTable = createScriptTable();
@@ -881,13 +889,13 @@ public class AutoTestPanel extends BorderPane {
                     // 用户在模板中填写了 CASE_NAME → 直接用它命名
                     String fileName = sanitizeFileName(caseNameFromTemplate) + "_Test" + ext;
                     File outputFile = new File(outputDir, fileName);
-                    writeOutputFile(outputFile, templateText);
+                    writeOutputFile(outputFile, templateText, language);
                 } else {
                     // CASE_NAME 为空 → 弹窗询问文件名
                     DialogUtil.showInputDialog("保存脚本模板", "请输入文件名:", "untitled" + ext, fileName -> {
                         if (fileName == null || fileName.trim().isEmpty()) return;
                         File outputFile = new File(outputDir, fileName.trim());
-                        writeOutputFile(outputFile, templateText);
+                        writeOutputFile(outputFile, templateText, language);
                     });
                 }
             } else {
@@ -900,7 +908,7 @@ public class AutoTestPanel extends BorderPane {
                 }
                 String defaultName = sanitizeFileName(targetCase.getCaseName()) + "_Test" + ext;
                 File outputFile = new File(outputDir, defaultName);
-                writeOutputFile(outputFile, templateArea.getText());
+                writeOutputFile(outputFile, templateArea.getText(), language);
             }
         });
 
@@ -912,6 +920,9 @@ public class AutoTestPanel extends BorderPane {
         Scene scene = new Scene(root);
         dialog.setScene(scene);
         dialog.show();
+        
+        // 保存对话框引用，用于生成后自动关闭
+        templateDialog = dialog;
     }
 
     /** 安全解析整数 */
@@ -1100,7 +1111,7 @@ public class AutoTestPanel extends BorderPane {
     }
 
     /**
-     * 将内容写入输出文件并提示成功
+     * 将内容写入输出文件并提示成功，成功后自动关闭模板对话框
      */
     private void writeOutputFile(File outputFile, String content) {
         try {
@@ -1108,8 +1119,65 @@ public class AutoTestPanel extends BorderPane {
             fw.write(content);
             fw.close();
             DialogUtil.showInfo("已生成: " + outputFile.getAbsolutePath());
+            closeTemplateDialog();
         } catch (java.io.IOException ex) {
             DialogUtil.showError("生成失败: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * 将内容写入输出文件，如果是 GDScript 则同时生成 .tscn 场景文件
+     * 成功后自动关闭模板对话框
+     *
+     * @param outputFile 输出文件
+     * @param content 文件内容
+     * @param language 语言标识
+     */
+    private void writeOutputFile(File outputFile, String content, String language) {
+        try {
+            // 写入脚本文件
+            java.io.FileWriter fw = new java.io.FileWriter(outputFile);
+            fw.write(content);
+            fw.close();
+
+            StringBuilder message = new StringBuilder();
+            message.append("已生成: ").append(outputFile.getAbsolutePath());
+
+            // 如果是 GDScript，同时生成 .tscn 场景文件
+            if ("gdscript".equals(language)) {
+                String scriptFileName = outputFile.getName();
+                String tscnFileName = scriptFileName.replaceAll("\\.gd$", ".tscn");
+                File tscnFile = new File(outputFile.getParent(), tscnFileName);
+
+                // 生成 .tscn 内容
+                String tscnContent = ScriptTemplateGenerator.generateTscn(scriptFileName, null);
+
+                // 写入 .tscn 文件
+                java.io.FileWriter tscnFw = new java.io.FileWriter(tscnFile);
+                tscnFw.write(tscnContent);
+                tscnFw.close();
+
+                message.append("\n同时生成场景文件: ").append(tscnFile.getAbsolutePath());
+            }
+
+            DialogUtil.showInfo(message.toString());
+            closeTemplateDialog();
+        } catch (java.io.IOException ex) {
+            DialogUtil.showError("生成失败: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * 关闭当前打开的脚本模板对话框
+     */
+    private void closeTemplateDialog() {
+        if (templateDialog != null) {
+            Platform.runLater(() -> {
+                if (templateDialog != null) {
+                    templateDialog.close();
+                    templateDialog = null;
+                }
+            });
         }
     }
 }

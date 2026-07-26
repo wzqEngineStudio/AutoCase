@@ -204,6 +204,37 @@ public class ReportPanel extends BorderPane {
         return label;
     }
 
+    /**
+     * 获取自动化测试状态图标
+     * PASSED → ✓, FAILED → ✗, BLOCKED → B, TIMEOUT → T, SKIPPED → S
+     */
+    private String getStatusIcon(String status) {
+        if (status == null) return "";
+        switch (status) {
+            case "PASSED": return "✓";
+            case "FAILED": return "✗";
+            case "BLOCKED": return "B";
+            case "TIMEOUT": return "T";
+            case "SKIPPED": return "S";
+            default: return "?";
+        }
+    }
+
+    /**
+     * 获取手工测试状态图标
+     * PASS → ✓, FAIL → ✗, BLOCKED → B, PENDING → ⏳
+     */
+    private String getManualStatusIcon(String status) {
+        if (status == null) return "";
+        switch (status) {
+            case "PASS": return "✓";
+            case "FAIL": return "✗";
+            case "BLOCKED": return "B";
+            case "PENDING": return "⏳";
+            default: return "?";
+        }
+    }
+
     private TableView<ExecutionResult> createAutoResultTable() {
         TableView<ExecutionResult> table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
@@ -221,22 +252,30 @@ public class ReportPanel extends BorderPane {
         TableColumn<ExecutionResult, String> statusCol = new TableColumn<>("状态");
         statusCol.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getStatus()));
         statusCol.setCellFactory(col -> new TableCell<ExecutionResult, String>() {
+            private final Label iconLabel = new Label();
+            {
+                iconLabel.setAlignment(Pos.CENTER);
+            }
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
                     setText(null);
+                    setGraphic(null);
                     setStyle("");
                 } else {
-                    setText(item);
+                    String icon = getStatusIcon(item);
+                    iconLabel.setText(icon);
                     switch (item) {
-                        case "PASSED": setStyle("-fx-text-fill: green; -fx-font-weight: bold;"); break;
-                        case "FAILED": setStyle("-fx-text-fill: red; -fx-font-weight: bold;"); break;
-                        case "BLOCKED": setStyle("-fx-text-fill: orange; -fx-font-weight: bold;"); break;
-                        case "TIMEOUT": setStyle("-fx-text-fill: #cc0000; -fx-font-weight: bold;"); break;
-                        case "SKIPPED": setStyle("-fx-text-fill: gray; -fx-font-weight: bold;"); break;
-                        default: setStyle("");
+                        case "PASSED": iconLabel.setStyle("-fx-text-fill: green; -fx-font-weight: bold; -fx-font-size: 14px;"); break;
+                        case "FAILED": iconLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold; -fx-font-size: 14px;"); break;
+                        case "BLOCKED": iconLabel.setStyle("-fx-text-fill: orange; -fx-font-weight: bold; -fx-font-size: 14px;"); break;
+                        case "TIMEOUT": iconLabel.setStyle("-fx-text-fill: #cc0000; -fx-font-weight: bold; -fx-font-size: 14px;"); break;
+                        case "SKIPPED": iconLabel.setStyle("-fx-text-fill: gray; -fx-font-weight: bold; -fx-font-size: 14px;"); break;
+                        default: iconLabel.setStyle("");
                     }
+                    setGraphic(iconLabel);
+                    setText(item);
                 }
             }
         });
@@ -587,21 +626,29 @@ public class ReportPanel extends BorderPane {
         TableColumn<ManualTestDetail, String> statusCol = new TableColumn<>("状态");
         statusCol.setCellValueFactory(new PropertyValueFactory<>("status"));
         statusCol.setCellFactory(col -> new TableCell<ManualTestDetail, String>() {
+            private final Label iconLabel = new Label();
+            {
+                iconLabel.setAlignment(Pos.CENTER);
+            }
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty || item == null) {
                     setText(null);
+                    setGraphic(null);
                     setStyle("");
                 } else {
-                    setText(item);
+                    String icon = getManualStatusIcon(item);
+                    iconLabel.setText(icon);
                     switch (item) {
-                        case "PASS": setStyle("-fx-text-fill: green; -fx-font-weight: bold;"); break;
-                        case "FAIL": setStyle("-fx-text-fill: red; -fx-font-weight: bold;"); break;
-                        case "BLOCKED": setStyle("-fx-text-fill: orange; -fx-font-weight: bold;"); break;
-                        case "PENDING": setStyle("-fx-text-fill: gray;"); break;
-                        default: setStyle("");
+                        case "PASS": iconLabel.setStyle("-fx-text-fill: green; -fx-font-weight: bold; -fx-font-size: 14px;"); break;
+                        case "FAIL": iconLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold; -fx-font-size: 14px;"); break;
+                        case "BLOCKED": iconLabel.setStyle("-fx-text-fill: orange; -fx-font-weight: bold; -fx-font-size: 14px;"); break;
+                        case "PENDING": iconLabel.setStyle("-fx-text-fill: gray; -fx-font-size: 14px;"); break;
+                        default: iconLabel.setStyle("");
                     }
+                    setGraphic(iconLabel);
+                    setText(item);
                 }
             }
         });
@@ -1083,7 +1130,7 @@ public class ReportPanel extends BorderPane {
             html.append("<td>").append(escapeHtml(result.getScriptName())).append("</td>");
             html.append("<td>").append(escapeHtml(result.getLanguage())).append("</td>");
             html.append("<td>").append(escapeHtml(result.getTestCasePath() != null ? "已关联" : "未关联")).append("</td>");
-            html.append("<td class='").append(result.getStatus()).append("'>").append(result.getStatus()).append("</td>");
+            html.append("<td class='").append(result.getStatus()).append("'>").append(getStatusIcon(result.getStatus())).append(" ").append(result.getStatus()).append("</td>");
             html.append("<td>").append(escapeHtml(result.getPriority() != null ? result.getPriority() : "-")).append("</td>");
             html.append("<td>").append(escapeHtml(result.getSeverity() != null ? result.getSeverity() : "-")).append("</td>");
             html.append("<td>").append(result.getExecutionTime()).append("</td>");
@@ -1140,7 +1187,7 @@ public class ReportPanel extends BorderPane {
             html.append("<td>").append(escapeHtml(detail.getCaseId())).append("</td>");
             html.append("<td>").append(escapeHtml(detail.getCaseName())).append("</td>");
             String statusClass = detail.getStatus() != null ? detail.getStatus() : "PENDING";
-            html.append("<td class='").append(statusClass).append("'>").append(statusClass).append("</td>");
+            html.append("<td class='").append(statusClass).append("'>").append(getManualStatusIcon(statusClass)).append(" ").append(statusClass).append("</td>");
             html.append("<td>").append(escapeHtml(detail.getPriority() != null ? detail.getPriority() : "-")).append("</td>");
             html.append("<td>").append(escapeHtml(detail.getSeverity() != null ? detail.getSeverity() : "-")).append("</td>");
             html.append("<td>").append(escapeHtml(detail.getLinkedAutoCaseId() != null ? detail.getLinkedAutoCaseId() : "-")).append("</td>");

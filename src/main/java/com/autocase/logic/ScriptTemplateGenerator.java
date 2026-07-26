@@ -483,14 +483,35 @@ public class ScriptTemplateGenerator {
         sb.append("# ========== 测试执行 ==========\n");
         sb.append("func _ready() -> void:\n");
         sb.append("\tvar start_time_msec := Time.get_ticks_msec()\n");
+        sb.append("\tvar success: bool = true\n");
+        sb.append("\tvar error_msg: String = \"\"\n");
+        sb.append("\n");
+        sb.append("\t# GDScript不支持try-catch，使用条件判断和断言进行错误处理\n");
         if (precond != null && !precond.isEmpty()) {
-            sb.append("\t_setup_precondition()\n");
+            sb.append("\tif is_instance_valid(self):\n");
+            sb.append("\t\t_setup_precondition()\n");
+            sb.append("\telse:\n");
+            sb.append("\t\tsuccess = false\n");
+            sb.append("\t\terror_msg = \"节点无效\"\n");
         }
         for (int i = 0; i < steps.length; i++) {
-            sb.append("\t_step_").append(i + 1).append("()\n");
+            sb.append("\tif success and is_instance_valid(self):\n");
+            sb.append("\t\t_step_").append(i + 1).append("()\n");
+            sb.append("\telse:\n");
+            sb.append("\t\tif success:\n");
+            sb.append("\t\t\tsuccess = false\n");
+            sb.append("\t\t\terror_msg = \"步骤").append(i + 1).append("执行失败\"\n");
         }
+        sb.append("\n");
         sb.append("\tvar elapsed := Time.get_ticks_msec() - start_time_msec\n");
-        sb.append("\tprint(\"[执行耗时] %dms\" % elapsed)\n");
+        sb.append("\tif success:\n");
+        sb.append("\t\tprint(\"PASS: 测试通过\")\n");
+        sb.append("\t\tprint(\"[执行耗时] %dms\" % elapsed)\n");
+        sb.append("\t\tget_tree().quit(0)\n");
+        sb.append("\telse:\n");
+        sb.append("\t\tprint(\"FAIL: 测试失败 - %s\" % error_msg)\n");
+        sb.append("\t\tprint(\"[执行耗时] %dms\" % elapsed)\n");
+        sb.append("\t\tget_tree().quit(1)\n");
 
         return sb.toString();
     }
@@ -653,10 +674,32 @@ public class ScriptTemplateGenerator {
                 "# ========== 测试执行 ==========\n" +
                 "func _ready() -> void:\n" +
                 "\tvar start_time_msec := Time.get_ticks_msec()\n" +
-                "\t_setup_precondition()\n" +
-                "\t_step_1()\n" +
+                "\tvar success: bool = true\n" +
+                "\tvar error_msg: String = \"\"\n" +
+                "\n" +
+                "\t# GDScript不支持try-catch，使用条件判断进行错误处理\n" +
+                "\tif is_instance_valid(self):\n" +
+                "\t\t_setup_precondition()\n" +
+                "\telse:\n" +
+                "\t\tsuccess = false\n" +
+                "\t\terror_msg = \"节点无效\"\n" +
+                "\n" +
+                "\tif success and is_instance_valid(self):\n" +
+                "\t\t_step_1()\n" +
+                "\telse:\n" +
+                "\t\tif success:\n" +
+                "\t\t\tsuccess = false\n" +
+                "\t\t\terror_msg = \"步骤1执行失败\"\n" +
+                "\n" +
                 "\tvar elapsed := Time.get_ticks_msec() - start_time_msec\n" +
-                "\tprint(\"[执行耗时] %dms\" % elapsed)\n";
+                "\tif success:\n" +
+                "\t\tprint(\"PASS: 测试通过\")\n" +
+                "\t\tprint(\"[执行耗时] %dms\" % elapsed)\n" +
+                "\t\tget_tree().quit(0)\n" +
+                "\telse:\n" +
+                "\t\tprint(\"FAIL: 测试失败 - %s\" % error_msg)\n" +
+                "\t\tprint(\"[执行耗时] %dms\" % elapsed)\n" +
+                "\t\tget_tree().quit(1)\n";
     }
 
     // ==================== 工具方法 ====================
@@ -726,5 +769,55 @@ public class ScriptTemplateGenerator {
             return tc.getExpectedResult().getCheckpoints().toArray(new String[0]);
         }
         return null;
+    }
+
+    // ==================== TSCN 场景文件生成 ====================
+
+    /**
+     * 生成 Godot 4.x 的 .tscn 场景文件内容
+     * 用于挂载 GDScript 脚本，使脚本可以通过场景运行
+     *
+     * @param scriptFileName 脚本文件名（如 "LoginTest.gd"）
+     * @param sceneName 场景名称（通常与脚本名相同，如 "LoginTest"）
+     * @return .tscn 文件内容
+     */
+    public static String generateTscn(String scriptFileName, String sceneName) {
+        if (scriptFileName == null || scriptFileName.isEmpty()) {
+            throw new IllegalArgumentException("脚本文件名不能为空");
+        }
+        if (sceneName == null || sceneName.isEmpty()) {
+            // 从文件名提取场景名（去掉扩展名）
+            sceneName = scriptFileName.replaceAll("\\.gd$", "");
+        }
+
+        StringBuilder sb = new StringBuilder();
+
+        // 文件描述符（Godot 4.x 格式）
+        sb.append("[gd_scene load_steps=2 format=3]\n\n");
+
+        // 外部资源引用（脚本文件）
+        // 使用 res:// 相对路径，实际路径由用户在 Godot 项目中配置
+        sb.append("[ext_resource type=\"Script\" path=\"res://").append(scriptFileName).append("\" id=\"1\"]\n\n");
+
+        // 根节点定义
+        // 根节点没有 parent 属性，type 为 Node（与 GDScript 中的 extends Node 对应）
+        sb.append("[node name=\"").append(sceneName).append("\" type=\"Node\"]\n");
+        sb.append("script = ExtResource(\"1\")\n");
+
+        return sb.toString();
+    }
+
+    /**
+     * 根据用例数据生成 .tscn 场景文件内容
+     *
+     * @param testCase 用例数据
+     * @param scriptFileName 脚本文件名（如 "LoginTest.gd"）
+     * @return .tscn 文件内容
+     */
+    public static String generateTscn(TestCase testCase, String scriptFileName) {
+        String sceneName = testCase != null && testCase.getCaseName() != null
+                ? sanitizeName(testCase.getCaseName())
+                : null;
+        return generateTscn(scriptFileName, sceneName);
     }
 }

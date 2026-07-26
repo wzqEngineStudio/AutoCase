@@ -74,7 +74,7 @@ public class ScriptExecutor {
         defaultCommands.put("Python", "python \"{0}\"");
         defaultCommands.put("C", "gcc \"{0}\" -o \"{1}\" && \"{1}\"");
         defaultCommands.put("C++", "g++ \"{0}\" -o \"{1}\" && \"{1}\"");
-        defaultCommands.put("GDScript", "godot --headless --script \"{0}\"");
+        defaultCommands.put("GDScript", "godot --headless --scene \"{0}\"");
         defaultCommands.put("C#", "dotnet run --project \"{0}\"");
         defaultCommands.put("Java", "java -cp \"{1}\" \"{2}\"");
         defaultCommands.put("JavaScript", "node \"{0}\"");
@@ -413,9 +413,30 @@ public class ScriptExecutor {
                 return template.replace("{0}", filePath).replace("{1}", exePath);
             case "Java":
                 return buildJavaCommand(script, rootDirectory, filePath);
+            case "GDScript":
+                // GDScript 需要通过 .tscn 场景文件运行
+                return buildGdscriptCommand(script, rootDirectory, filePath);
             default:
                 return template.replace("{0}", filePath);
         }
+    }
+
+    /**
+     * 构建 GDScript 执行命令（查找对应的 .tscn 场景文件）
+     */
+    private String buildGdscriptCommand(TestScript script, String rootDirectory, String gdFilePath) {
+        // 将 .gd 文件路径转换为 .tscn 文件路径
+        String tscnPath = gdFilePath.replaceAll("\\.gd$", ".tscn");
+        File tscnFile = new File(tscnPath);
+        
+        // 如果 .tscn 文件不存在，回退到直接执行 .gd 文件（兼容旧脚本）
+        if (!tscnFile.exists()) {
+            System.err.println("Warning: TSCN file not found: " + tscnPath + ", falling back to direct script execution");
+            return "godot --headless --script \"" + gdFilePath + "\"";
+        }
+        
+        String template = getCommand("GDScript");
+        return template.replace("{0}", tscnPath);
     }
 
     /**
